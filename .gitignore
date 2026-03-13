@@ -1,5 +1,8 @@
+# Datasets and Zips
 music_dataset/
 music_dataset.zip
+
+# Temporary and Output files
 *.wav
 *.mp3
 *.mid
@@ -10,10 +13,15 @@ composition_history.json
 .streamlit/
 temp/
 tmp/
-# Exclude large folders but keep code
-EMOPIA/
-emonet/
-pretrained_transformer/
-# We might want to keep the models themselves if they are < 100MB
-# but usually, it's better to keep code only and provide download links.
-# However, user explicitly asked to "connect this folder", so I will include the main scripts.
+
+# Heavy Models (Exceeding GitHub 100MB limit or bulk data)
+emonet/pretrained/
+emonet/images/
+emonet/pickles/
+EMOPIA/exp/
+EMOPIA/docs/
+pretrained_transformer/loss_25_params.pt
+
+# Keep code but ignore results
+results/
+logs/
