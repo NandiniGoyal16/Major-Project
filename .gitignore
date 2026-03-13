@@ -1,0 +1,19 @@
+music_dataset/
+music_dataset.zip
+*.wav
+*.mp3
+*.mid
+*.h5
+__pycache__/
+.DS_Store
+composition_history.json
+.streamlit/
+temp/
+tmp/
+# Exclude large folders but keep code
+EMOPIA/
+emonet/
+pretrained_transformer/
+# We might want to keep the models themselves if they are < 100MB
+# but usually, it's better to keep code only and provide download links.
+# However, user explicitly asked to "connect this folder", so I will include the main scripts.
