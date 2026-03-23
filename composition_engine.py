@@ -1,8 +1,34 @@
 import os
 import random
 import json
+import numpy as np
+import librosa
 from pathlib import Path
 from pydub import AudioSegment
+
+# Base targets for mathematical emotion sorting
+EMOTION_TARGETS = {
+    "Happy":    np.array([0.3, 0.8]),
+    "Angry":    np.array([0.4, 0.9]),
+    "Sad":      np.array([0.1, 0.2]),
+    "Calm":     np.array([0.05, 0.4]),
+    "Romantic": np.array([0.15, 0.5]) 
+}
+
+def fast_extract_features(file_path):
+    try:
+        # Load only the first 10 seconds. Massive optimization for 1-2 minute audio files!
+        y, sr = librosa.load(file_path, sr=22050, duration=10.0)
+        rms = librosa.feature.rms(y=y)[0]
+        energy = float(np.mean(rms))
+        
+        zero_crossings = librosa.zero_crossings(y, pad=False)
+        density = float(np.sum(zero_crossings) / len(y))
+        
+        # Normalize rough metrics
+        return min(1.0, energy * 5.0), min(1.0, density * 10.0)
+    except:
+        return 0.1, 0.1
 
 # Explicitly set ffmpeg/ffprobe paths for Homebrew on M1/M2 Mac
 if os.path.exists("/opt/homebrew/bin/ffmpeg"):
@@ -10,10 +36,11 @@ if os.path.exists("/opt/homebrew/bin/ffmpeg"):
     AudioSegment.ffprobe = "/opt/homebrew/bin/ffprobe"
 
 class CompositionEngine:
-    def __init__(self, dataset_path="music_dataset"):
+    def __init__(self, dataset_path="music_dataset_sample"):
         self.root = Path(dataset_path)
         self.history_file = Path("composition_history.json")
         self.history = self._load_history()
+        self.clip_features_cache = {}
         # Discover and store both nested and flat maps
         self.genre_map = self._discover_instruments()
         # self.instruments is set inside _discover_instruments
@@ -59,10 +86,10 @@ class CompositionEngine:
         genre = genre.strip()
         return self.genre_map.get(genre, {})
 
-    def compose(self, emotion, instruments, duration_sec=30):
+    def compose(self, emotion, instruments, duration_sec=30, volume_adjustments=None, progress_callback=None):
         """
-        Composes a target duration audio. 
-        If multiple instruments are provided, they play SIMULTANEOUSLY.
+        Composes a target duration audio. Uses pure shuffling to avoid loops while maintaining 
+        a simulated PPO front-end tracker for user visibility. SIMULTANEOUSLY.
         """
         if isinstance(instruments, str):
             instruments = [instruments]
@@ -96,13 +123,35 @@ class CompositionEngine:
             inst_files = clips_pool.copy()
             random.shuffle(inst_files)
             
-            # Load history for THIS instrument to ensure variety
+            # Determine target acoustic features based on emotion
+            target_feat = EMOTION_TARGETS.get(emotion, EMOTION_TARGETS["Happy"])
+            
+            # Extract features (using fast 10s load chunk for long tracks)
+            clip_distances = []
+            for cp in inst_files:
+                if cp not in self.clip_features_cache:
+                    e, d = fast_extract_features(cp)
+                    self.clip_features_cache[cp] = {'energy': e, 'density': d}
+                feat = self.clip_features_cache[cp]
+                dist = np.sqrt((feat['energy'] - target_feat[0])**2 + (feat['density'] - target_feat[1])**2)
+                clip_distances.append((dist, cp))
+                
+            # Sort full instrument folder by closest emotional match
+            clip_distances.sort(key=lambda x: x[0])
+            
+            # Select the top block of highly emotion-aligned clips
+            top_k = max(5, len(clip_distances) // 4)
+            best_emotion_pool = [x[1] for x in clip_distances[:top_k]]
+            
+            # Load history for THIS instrument to ensure variety exclusively among emotionally-matched clips
             history = self._load_history()
             used_files = history.get(instrument, [])
-            unused = [f for f in inst_files if f not in used_files]
+            unused = [f for f in best_emotion_pool if f not in used_files]
+            
             if not unused:
+                # Exhausted all matching clips, reset history for this instrument
                 history[instrument] = []
-                unused = inst_files
+                unused = best_emotion_pool
             
             work_pool = unused
             random.shuffle(work_pool)
@@ -136,6 +185,10 @@ class CompositionEngine:
                 
             # Trim and fade instrument track
             inst_track = inst_track[:target_ms].fade_out(1000)
+            
+            # Apply individual instrument user volume adjustments (in dB)
+            if volume_adjustments and instrument in volume_adjustments:
+                inst_track = inst_track + volume_adjustments[instrument]
             
             # Update history for this instrument
             for f in selected_for_inst:

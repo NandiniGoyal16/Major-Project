@@ -12,7 +12,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 class AudioEngine:
-    def __init__(self, dataset_root="music_dataset"):
+    def __init__(self, dataset_root="music_dataset_sample"):
         self.root = Path(dataset_root)
         self.genres = ["Western Music", "Indian Classical "]
         self.max_samples = 100 # User constraint
